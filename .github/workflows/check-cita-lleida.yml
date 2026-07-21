@@ -2,6 +2,8 @@ name: Chequeo cita Registre Civil Lleida
 
 on:
   schedule:
+    # 8:00, 13:00 y 19:00 hora de España (verano, UTC+2) => 6,11,17 UTC.
+    # Ajustá estas horas si querés otra frecuencia u horario.
     - cron: "0 6,11,17 * * *"
   workflow_dispatch: {}
 
@@ -29,3 +31,11 @@ jobs:
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           ALERT_EMAIL: ${{ secrets.ALERT_EMAIL }}
         run: python check_cita.py
+
+      - name: Upload debug screenshot on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-screenshot
+          path: debug_failure.png
+          retention-days: 3
