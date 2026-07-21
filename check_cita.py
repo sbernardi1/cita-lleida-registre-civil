@@ -66,6 +66,21 @@ async def check_availability():
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
         page = await browser.new_page()
+        try:
+            await _check_availability_inner(page, available_dates)
+        except Exception:
+            try:
+                await page.screenshot(path="debug_failure.png", full_page=True)
+            except Exception:
+                pass
+            raise
+        finally:
+            await browser.close()
+
+    return sorted(set(available_dates))
+
+
+async def _check_availability_inner(page, available_dates):
         await page.goto(URL, wait_until="networkidle", timeout=60000)
         await page.wait_for_timeout(4000)
 
@@ -98,13 +113,24 @@ async def check_availability():
             raise RuntimeError("No se encontró el iframe del formulario de cita")
 
         date_input = frame.locator("input.ui-inputtext").first
-        try:
-            await date_input.click(click_count=3, timeout=10000)
-        except Exception:
-            # Última red de seguridad: si algo sigue tapando el input,
-            # forzamos el click igual (bypassea el chequeo de overlay).
-            await date_input.click(click_count=3, timeout=10000, force=True)
-        await frame.locator(".ui-datepicker-title").wait_for(state="visible", timeout=10000)
+        datepicker_title = frame.locator(".ui-datepicker-title")
+        opened = False
+        for attempt in range(4):
+            try:
+                await date_input.click(click_count=3, timeout=8000)
+            except Exception:
+                try:
+                    await date_input.click(click_count=3, timeout=8000, force=True)
+                except Exception:
+                    pass
+            try:
+                await datepicker_title.wait_for(state="visible", timeout=4000)
+                opened = True
+                break
+            except Exception:
+                await page.wait_for_timeout(500)
+        if not opened:
+            raise RuntimeError("No se pudo abrir el selector de fecha (datepicker) tras varios intentos")
         await page.wait_for_timeout(300)
 
         prev_btn = frame.locator("a.ui-datepicker-prev")
@@ -140,10 +166,6 @@ async def check_availability():
             if (year, month) != TARGET_MONTHS[-1]:
                 await next_btn.click()
                 await page.wait_for_timeout(300)
-
-        await browser.close()
-
-    return sorted(set(available_dates))
 
 
 def send_email(available_dates):
