@@ -71,13 +71,26 @@ async def check_availability():
 
         # La primera vez que se visita en una sesión nueva aparece un modal
         # de aviso ("Sortir ràpid") que bloquea los clics hasta cerrarlo.
-        try:
-            accept_btn = page.get_by_role("button", name="D'acord")
-            await accept_btn.wait_for(state="visible", timeout=5000)
-            await accept_btn.click()
+        # Usamos un match parcial/case-insensitive porque "D'acord" puede
+        # llevar una comilla tipográfica (') distinta de la recta (').
+        for _ in range(3):
+            overlay = page.locator(".ui-dialog-mask, .ui-widget-overlay")
+            if await overlay.count() == 0:
+                break
+            try:
+                accept_btn = page.get_by_role(
+                    "button", name=re.compile("acord", re.IGNORECASE)
+                )
+                if await accept_btn.count() > 0:
+                    await accept_btn.first.click(timeout=3000)
+                else:
+                    await page.keyboard.press("Escape")
+            except Exception:
+                try:
+                    await page.keyboard.press("Escape")
+                except Exception:
+                    pass
             await page.wait_for_timeout(500)
-        except Exception:
-            pass  # el modal no apareció, seguimos normalmente
 
         # El formulario de cita vive dentro de un iframe (mismo origen)
         frame = next((f for f in page.frames if f != page.main_frame), None)
@@ -85,7 +98,12 @@ async def check_availability():
             raise RuntimeError("No se encontró el iframe del formulario de cita")
 
         date_input = frame.locator("input.ui-inputtext").first
-        await date_input.click(click_count=3)
+        try:
+            await date_input.click(click_count=3, timeout=10000)
+        except Exception:
+            # Última red de seguridad: si algo sigue tapando el input,
+            # forzamos el click igual (bypassea el chequeo de overlay).
+            await date_input.click(click_count=3, timeout=10000, force=True)
         await frame.locator(".ui-datepicker-title").wait_for(state="visible", timeout=10000)
         await page.wait_for_timeout(300)
 
