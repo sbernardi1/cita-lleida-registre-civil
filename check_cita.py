@@ -69,6 +69,16 @@ async def check_availability():
         await page.goto(URL, wait_until="networkidle", timeout=60000)
         await page.wait_for_timeout(4000)
 
+        # La primera vez que se visita en una sesión nueva aparece un modal
+        # de aviso ("Sortir ràpid") que bloquea los clics hasta cerrarlo.
+        try:
+            accept_btn = page.get_by_role("button", name="D'acord")
+            await accept_btn.wait_for(state="visible", timeout=5000)
+            await accept_btn.click()
+            await page.wait_for_timeout(500)
+        except Exception:
+            pass  # el modal no apareció, seguimos normalmente
+
         # El formulario de cita vive dentro de un iframe (mismo origen)
         frame = next((f for f in page.frames if f != page.main_frame), None)
         if frame is None:
